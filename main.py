@@ -9,6 +9,8 @@ from typing import List, Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from en_module import ENVoiceModule
+
 APP_NAME = "Jarvis 0.2"
 CONFIG_DIR = Path("config")
 CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,6 +41,10 @@ class Settings:
     wake_word: str = "джарвис"
     sensitivity: int = 3
     stt_model_path: str = DEFAULT_MODEL_PATH
+    en_mod_enabled: bool = False
+    en_wake_word: str = "jarvis"
+    en_sensitivity: int = 3
+    en_model_path: str = str(Path("models") / "en" / "vosk-model-small-en-us-0.15")
 
 @dataclass
 class Config:
@@ -520,6 +526,26 @@ class SettingsTab(QtWidgets.QWidget):
         hb.addWidget(pick_model)
         form.addRow("Путь к модели:", hb)
 
+        # ---- English module ----
+        sep = QtWidgets.QLabel("── EN Module ──")
+        sep.setAlignment(QtCore.Qt.AlignCenter)
+        self.en_enabled = QtWidgets.QCheckBox("Включить EN модуль")
+        self.en_wake = QtWidgets.QLineEdit()
+        self.en_sens = QtWidgets.QSpinBox()
+        self.en_sens.setRange(1, 5)
+        self.en_model = QtWidgets.QLineEdit()
+        pick_en_model = QtWidgets.QPushButton("...")
+        pick_en_model.setFixedWidth(36)
+
+        form.addRow("", sep)
+        form.addRow("", self.en_enabled)
+        form.addRow("EN триггер:", self.en_wake)
+        form.addRow("EN чувствит. (1-5):", self.en_sens)
+        ehb = QtWidgets.QHBoxLayout()
+        ehb.addWidget(self.en_model)
+        ehb.addWidget(pick_en_model)
+        form.addRow("EN путь к модели:", ehb)
+
         v = QtWidgets.QVBoxLayout(self)
         v.addLayout(form)
         v.addStretch(1)
@@ -533,6 +559,10 @@ class SettingsTab(QtWidgets.QWidget):
         self.wake.setText(s.wake_word)
         self.sens.setValue(int(s.sensitivity))
         self.model_path.setText(s.stt_model_path)
+        self.en_enabled.setChecked(s.en_mod_enabled)
+        self.en_wake.setText(s.en_wake_word)
+        self.en_sens.setValue(int(s.en_sensitivity))
+        self.en_model.setText(s.en_model_path)
 
         self.theme.currentTextChanged.connect(self.on_theme)
         pick_bg.clicked.connect(self.on_pick_bg)
@@ -543,6 +573,11 @@ class SettingsTab(QtWidgets.QWidget):
         self.sens.valueChanged.connect(self.on_sens)
         pick_model.clicked.connect(self.on_pick_model)
         self.model_path.editingFinished.connect(self.on_model_path)
+        self.en_enabled.toggled.connect(self.on_en_toggle)
+        self.en_wake.editingFinished.connect(self.on_en_wake)
+        self.en_sens.valueChanged.connect(self.on_en_sens)
+        pick_en_model.clicked.connect(self.on_pick_en_model)
+        self.en_model.editingFinished.connect(self.on_en_model)
 
     def _set_bg_label(self, path: str):
         self.bg_label.setText(path if path else "Фон: не выбран")
@@ -586,6 +621,28 @@ class SettingsTab(QtWidgets.QWidget):
         self.cfg.settings.stt_model_path = self.model_path.text().strip()
         self.changed.emit()
 
+    def on_en_toggle(self, checked: bool):
+        self.cfg.settings.en_mod_enabled = checked
+        self.changed.emit()
+
+    def on_en_wake(self):
+        self.cfg.settings.en_wake_word = self.en_wake.text().strip() or "jarvis"
+        self.changed.emit()
+
+    def on_en_sens(self, v: int):
+        self.cfg.settings.en_sensitivity = int(v)
+        self.changed.emit()
+
+    def on_pick_en_model(self):
+        d = QtWidgets.QFileDialog.getExistingDirectory(self, "Папка EN модели Vosk")
+        if d:
+            self.en_model.setText(d)
+            self.on_en_model()
+
+    def on_en_model(self):
+        self.cfg.settings.en_model_path = self.en_model.text().strip()
+        self.changed.emit()
+
 # ====== Главное окно ======
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -601,6 +658,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.cfg = load_config()
         self.voice = VoiceAssistant(self.cfg)
         self.voice.log.connect(self.on_log)
+        self.en_mod = ENVoiceModule()
+        self.en_mod.on_command = self._on_en_command
 
         # Toolbar
         self.toolbar = self.addToolBar("main")
@@ -649,6 +708,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.apply_background()
         self.apply_voice_mode()
         self.update_hotkeys()
+        self.apply_en_module()
 
     def apply_theme(self):
         qss = get_qss(self.cfg.settings.theme)
@@ -706,12 +766,33 @@ class MainWindow(QtWidgets.QMainWindow):
         self.apply_background()
         self.apply_voice_mode()
         self.update_hotkeys()
+        self.apply_en_module()
 
     def on_log(self, msg: str):
         self.status.showMessage(msg, 5000)
 
+    def apply_en_module(self):
+        if self.cfg.settings.en_mod_enabled:
+            self.en_mod.cfg.settings.wake_word = self.cfg.settings.en_wake_word
+            self.en_mod.cfg.settings.sensitivity = self.cfg.settings.en_sensitivity
+            self.en_mod.cfg.settings.model_path = self.cfg.settings.en_model_path
+            self.en_mod.start()
+        else:
+            self.en_mod.stop()
+
+    def _on_en_command(self, text: str) -> bool:
+        """Callback from EN module. Return True if handled."""
+        t = text.lower()
+        for s in self.cfg.sites:
+            if s.command and s.command.lower() in t:
+                self.voice.speak(f"Открываю {s.name}")
+                webbrowser.open(s.url)
+                return True
+        return False
+
     def closeEvent(self, event):
         self.voice.stop_always_listen()
+        self.en_mod.stop()
         for th in getattr(self, '_hotkey_threads', []):
             try:
                 th.do_run = False
