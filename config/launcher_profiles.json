@@ -1,0 +1,47 @@
+{
+  "work": {
+    "apps": [
+      {
+        "name": "Chrome",
+        "path": "C:/Program Files/Google/Chrome/Application/chrome.exe"
+      },
+      {
+        "name": "VS Code",
+        "path": "C:/Users/K1suke/AppData/Local/Programs/Microsoft VS Code/Code.exe"
+      }
+    ],
+    "sites": [
+      "https://github.com",
+      "https://mail.google.com"
+    ],
+    "delay": 1
+  },
+  "games": {
+    "apps": [
+      {
+        "name": "Steam",
+        "path": "C:/Program Files (x86)/Steam/Steam.exe"
+      }
+    ],
+    "sites": [],
+    "delay": 2
+  },
+  "social": {
+    "apps": [],
+    "sites": [
+      "https://t.me",
+      "https://discord.com/app",
+      "https://youtube.com"
+    ],
+    "delay": 0.5
+  },
+  "all": {
+    "apps": [],
+    "sites": [
+      "https://youtube.com",
+      "https://music.youtube.com",
+      "https://github.com"
+    ],
+    "delay": 0.5
+  }
+}
